@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EIT Calibration & Instrument Equipment Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Exo+2:wght@300;400;600;700&display=swap');
+  :root {
+    --bg:#0a0e1a; --surface:#111827; --surface2:#1a2235; --surface3:#1f2d44;
+    --border:#263147; --accent1:#00d4ff; --accent2:#ff6b35; --accent3:#39ff14;
+    --text:#e8edf5; --text-muted:#6b7a99; --text-dim:#4a5568;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Exo 2',sans-serif;min-height:100vh;overflow-x:hidden;}
+  body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,212,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+  .page-wrapper{position:relative;z-index:1;}
+  header{padding:28px 40px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(180deg,rgba(0,212,255,.04) 0%,transparent 100%);}
+  .logo-title{font-family:'Rajdhani',sans-serif;font-size:26px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--accent1);text-shadow:0 0 20px rgba(0,212,255,.4);}
+  .logo-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);letter-spacing:2px;margin-top:2px;}
+  .file-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);text-align:right;line-height:1.8;}
+  /* Loading screen */
+  #loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:20px;}
+  .spinner{width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent1);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text{font-family:'DM Mono',monospace;font-size:13px;color:var(--text-muted);letter-spacing:2px;animation:pulse 1.5s infinite;}
+  .loading-sub{font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:1px;}
+  @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+  /* Error screen */
+  #error-screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center;padding:40px;}
+  .error-icon{font-size:48px;}
+  .error-title{font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:#ff4757;letter-spacing:2px;}
+  .error-msg{font-family:'DM Mono',monospace;font-size:12px;color:var(--text-muted);max-width:500px;line-height:1.8;}
+  /* Tabs */
+  .tabs-bar{display:flex;padding:0 40px;gap:4px;border-bottom:1px solid var(--border);}
+  .tab-btn{padding:14px 28px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted);font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:600;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:all .2s;position:relative;bottom:-1px;}
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active-cal{color:var(--accent1);border-bottom-color:var(--accent1);text-shadow:0 0 12px rgba(0,212,255,.4);}
+  .tab-btn.active-inst{color:var(--accent2);border-bottom-color:var(--accent2);text-shadow:0 0 12px rgba(255,107,53,.4);}
+  .tab-panel{display:none;padding:32px 40px;}
+  .tab-panel.active{display:block;}
+  .section-heading{font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:600;letter-spacing:4px;text-transform:uppercase;color:var(--text-muted);margin-bottom:16px;display:flex;align-items:center;gap:10px;}
+  .section-heading::after{content:'';flex:1;height:1px;background:var(--border);}
+  .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;}
+  .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 22px;position:relative;overflow:hidden;transition:transform .2s,border-color .2s;}
+  .kpi-card:hover{transform:translateY(-2px);border-color:var(--card-accent,var(--accent1));}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--card-accent,var(--accent1)),transparent);}
+  .kpi-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;}
+  .kpi-value{font-family:'Rajdhani',sans-serif;font-size:36px;font-weight:700;line-height:1;margin-bottom:6px;color:var(--card-accent,var(--accent1));}
+  .kpi-pct{font-family:'DM Mono',monospace;font-size:12px;color:var(--text-muted);}
+  .progress-bar{height:4px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden;}
+  .progress-fill{height:100%;border-radius:2px;background:var(--card-accent,var(--accent1));box-shadow:0 0 8px var(--card-accent,var(--accent1));}
+  .tables-row{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:32px;}
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{padding:10px 14px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);background:var(--surface2);white-space:nowrap;}
+  td{padding:9px 14px;border-bottom:1px solid rgba(38,49,71,.5);font-size:13px;color:var(--text);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(255,255,255,.02);}
+  .td-total{font-weight:700!important;background:var(--surface2)!important;border-top:1px solid var(--border)!important;}
+  .td-number{text-align:right;font-family:'DM Mono',monospace;}
+  .pct-bar-wrap{display:flex;align-items:center;gap:8px;justify-content:flex-end;}
+  .mini-bar{width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;}
+  .mini-bar-fill{height:100%;border-radius:3px;}
+  .matrix-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:32px;}
+  .matrix-scroll{overflow-x:auto;}
+  .matrix-table th.area-h{text-align:center;background:var(--surface3);border-left:1px solid var(--border);}
+  .matrix-table td.ctr{text-align:center;font-family:'DM Mono',monospace;font-size:12px;border-left:1px solid rgba(38,49,71,.3);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;}
+  .badge-blue{background:rgba(0,212,255,.12);color:var(--accent1);}
+  .badge-orange{background:rgba(255,107,53,.12);color:var(--accent2);}
+  #dashboard{display:none;}
+  @media(max-width:1100px){.kpi-row{grid-template-columns:repeat(2,1fr)}.tables-row{grid-template-columns:1fr}}
+  @media(max-width:700px){header{padding:16px 20px;flex-wrap:wrap;gap:12px}.tab-panel{padding:20px 16px}}
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+  <header>
+    <div>
+      <div class="logo-title">EIT Progress Dashboard</div>
+      <div class="logo-sub">CMS · Calibration & Instrument Equipment</div>
+    </div>
+    <div class="file-date" id="file-info">Loading...</div>
+  </header>
+
+  <!-- Loading -->
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <div class="loading-text">FETCHING LATEST FILE...</div>
+    <div class="loading-sub" id="loading-sub">Connecting to Google Drive</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-screen">
+    <div class="error-icon">⚠️</div>
+    <div class="error-title">FAILED TO LOAD DATA</div>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <div class="tabs-bar">
+      <button class="tab-btn active-cal" id="tab-cal" onclick="switchTab('cal')">📡 Calibration</button>
+      <button class="tab-btn" id="tab-inst" onclick="switchTab('inst')">🔧 Instrument Equipment</button>
+    </div>
+    <div class="tab-panel active" id="panel-cal">
+      <div class="kpi-row" id="cal-kpi"></div>
+      <div class="tables-row">
+        <div>
+          <div class="section-heading">Breakdown by Instrument Type</div>
+          <div class="table-card"><div class="matrix-scroll"><table id="cal-type-tbl"></table></div></div>
+        </div>
+        <div>
+          <div class="section-heading">Breakdown by Area</div>
+          <div class="table-card"><div class="matrix-scroll"><table id="cal-area-tbl"></table></div></div>
+        </div>
+      </div>
+      <div class="section-heading">Instrument Type × Area Matrix (Total / Inspected)</div>
+      <div class="matrix-card"><div class="matrix-scroll"><table class="matrix-table" id="cal-matrix-tbl"></table></div></div>
+    </div>
+    <div class="tab-panel" id="panel-inst">
+      <div class="kpi-row" id="inst-kpi"></div>
+      <div class="tables-row">
+        <div>
+          <div class="section-heading">Breakdown by Instrument Type</div>
+          <div class="table-card"><div class="matrix-scroll"><table id="inst-type-tbl"></table></div></div>
+        </div>
+        <div>
+          <div class="section-heading">Breakdown by Area</div>
+          <div class="table-card"><div class="matrix-scroll"><table id="inst-area-tbl"></table></div></div>
+        </div>
+      </div>
+      <div class="section-heading">Instrument Type × Area Matrix (Total / Inspected)</div>
+      <div class="matrix-card"><div class="matrix-scroll"><table class="matrix-table" id="inst-matrix-tbl"></table></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  CONFIG — แก้ค่าเหล่านี้เท่านั้น
+// ════════════════════════════════════════════
+const CONFIG = {
+  API_KEY:   'AIzaSyBTGyPSekybju_1Eh3rsfdKRyJPygC1wU8',
+  FOLDER_ID: '1BQHnHd-oQePlkLr23q1uYz523UvHdRPT',
+};
+// ════════════════════════════════════════════
+
+const fmt = n => (n??0).toLocaleString();
+const pctStr = (a,b) => b>0 ? ((a/b)*100).toFixed(1)+'%' : '0.0%';
+const pctNum = (a,b) => b>0 ? (a/b)*100 : 0;
+
+function switchTab(t) {
+  ['cal','inst'].forEach(id => {
+    document.getElementById('panel-'+id).classList.toggle('active', id===t);
+    document.getElementById('tab-'+id).className = 'tab-btn'+(id===t?' active-'+id:'');
+  });
+}
+
+function showError(msg) {
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('error-screen').style.display = 'flex';
+  document.getElementById('error-msg').innerHTML = msg;
+}
+
+function setLoadingText(text) {
+  document.getElementById('loading-sub').textContent = text;
+}
+
+// ── STEP 1: List files in folder, get latest xlsx ──
+async function fetchLatestFile() {
+  setLoadingText('Listing files in Google Drive folder...');
+  const query = encodeURIComponent(`'${CONFIG.FOLDER_ID}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and trashed=false`);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&orderBy=modifiedTime+desc&pageSize=1&fields=files(id,name,modifiedTime)&key=${CONFIG.API_KEY}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(`Drive API error: ${err.error?.message || res.status}\n\nMake sure:\n1. The folder is shared as "Anyone with the link"\n2. Google Drive API is enabled\n3. API Key is correct`);
+  }
+  const data = await res.json();
+  if (!data.files || data.files.length === 0) {
+    throw new Error('No Excel files found in the folder.\n\nMake sure there is at least one .xlsx file in the CMS folder.');
+  }
+  return data.files[0]; // latest file
+}
+
+// ── STEP 2: Download file content ──
+async function downloadFile(fileId, fileName) {
+  setLoadingText(`Downloading: ${fileName}`);
+  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${CONFIG.API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to download file: ${res.status} ${res.statusText}`);
+  }
+  return await res.arrayBuffer();
+}
+
+// ── MAIN: init ──
+async function init() {
+  try {
+    const file = await fetchLatestFile();
+    const modDate = new Date(file.modifiedTime);
+    const modStr = modDate.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) + ' ' +
+                   modDate.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+
+    const buffer = await downloadFile(file.id, file.name);
+
+    setLoadingText('Processing Excel data...');
+    const wb = XLSX.read(buffer, { type:'array', cellDates:true, raw:true });
+
+    document.getElementById('file-info').innerHTML =
+      `FILE: ${file.name}<br>MODIFIED: ${modStr}`;
+
+    const calData  = parseCalibration(wb);
+    const instData = parseInstrumentEquipment(wb);
+
+    if (calData)  renderCalDashboard(calData);
+    if (instData) renderInstDashboard(instData);
+
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+
+  } catch(err) {
+    showError(err.message.replace(/\n/g,'<br>'));
+  }
+}
+
+// ── DATE CHECK ──
+function isDate(v) {
+  if (!v) return false;
+  if (v instanceof Date) return !isNaN(v.getTime());
+  return false;
+}
+
+// ── CALIBRATION PARSER ──
+function parseCalibration(wb) {
+  const sn = wb.SheetNames.find(n => n.trim().toLowerCase() === 'calibration');
+  if (!sn) { throw new Error('Sheet "Calibration" not found!'); }
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, defval:null, raw:true });
+  // col: tag=9, desc=10, area=5, cal=12, insp=13, rfi=14  (header at row 6)
+  const COL = { tag:9, desc:10, area:5, cal:12, insp:13, rfi:14 };
+  let hdrRow = 6;
+  for (let i = 0; i < Math.min(rows.length,15); i++) {
+    if (rows[i] && rows[i].some(c => c && String(c).toLowerCase().replace(/[\s\n]/g,'').includes('tagno'))) { hdrRow = i; break; }
+  }
+  const data = [];
+  for (let i = hdrRow+1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const tag = r[COL.tag]; if (!tag) continue;
+    const tagStr = String(tag).trim();
+    if (!tagStr || tagStr.toLowerCase().replace(/[\s.]/g,'') === 'tagno') continue;
+    data.push({
+      tag: tagStr,
+      desc: r[COL.desc] != null ? String(r[COL.desc]).trim() : '',
+      area: r[COL.area] != null ? String(r[COL.area]).trim() : '',
+      cal:  isDate(r[COL.cal]),
+      insp: isDate(r[COL.insp]),
+      rfi:  r[COL.rfi] != null && String(r[COL.rfi]).trim() !== '',
+    });
+  }
+  return buildCalStats(data);
+}
+
+// ── INSTRUMENT EQUIPMENT PARSER ──
+function parseInstrumentEquipment(wb) {
+  const sn = wb.SheetNames.find(n => n.trim().toLowerCase() === 'instrument equipment');
+  if (!sn) { throw new Error('Sheet "Instrument Equipment" not found!'); }
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, defval:null, raw:true });
+  // col: tag=9, desc=10, area=5, install=18, insp=19, rfi=20  (header at row 7)
+  const COL = { tag:9, desc:10, area:5, install:18, insp:19, rfi:20 };
+  let hdrRow = 7;
+  for (let i = 0; i < Math.min(rows.length,15); i++) {
+    if (rows[i] && rows[i].some(c => c && String(c).toLowerCase().replace(/\s/g,'').includes('tagno'))) { hdrRow = i; break; }
+  }
+  const data = [];
+  for (let i = hdrRow+1; i < rows.length; i++) {
+    const r = rows[i]; if (!r) continue;
+    const tag = r[COL.tag]; if (!tag) continue;
+    const tagStr = String(tag).trim();
+    if (!tagStr) continue;
+    if (tagStr.toLowerCase().replace(/\s/g,'') === 'tagno') continue;
+    if (/^\d{1,4}$/.test(tagStr)) continue;
+    data.push({
+      tag: tagStr,
+      desc:    r[COL.desc]    != null ? String(r[COL.desc]).trim()    : '',
+      area:    r[COL.area]    != null ? String(r[COL.area]).trim()    : '',
+      install: isDate(r[COL.install]),
+      insp:    isDate(r[COL.insp]),
+      rfi:     r[COL.rfi]     != null && String(r[COL.rfi]).trim()    !== '',
+    });
+  }
+  return buildInstStats(data);
+}
+
+// ── CALIBRATION CLASSIFICATION ──
+function classifyCal(desc) {
+  const d = (desc||'').toLowerCase();
+  if (d.includes('restriction'))           return 'Restriction Orifice';
+  if (d.includes('dp flow'))               return 'DP / Flow Transmitter';
+  if (d.includes('dp level') || d.includes('level d/p')) return 'DP / Level Transmitter';
+  if (d.includes('pressure transmitter'))  return 'Pressure Transmitter';
+  if (d.includes('flow transmitter'))      return 'Flow Transmitter';
+  if (d.includes('temperature transmitter') || d.includes('temperaturetransmitter') ||
+      d.includes('temp transmitter') || d.includes('temp trans')) return 'Temperature Transmitter (incl. Temp)';
+  if (d.includes('diaph'))                 return 'Pressure Gauge w/ Diaphragm Seal';
+  if (d.includes('pressure gauge'))        return 'Pressure Gauge (excl. diaphragm)';
+  if (d.includes('temperature gauge'))     return 'Temperature Gauge';
+  if (d.includes('temp gauge'))            return 'Temp Gauge';
+  if (d.includes('thermowell'))            return 'Thermowell';
+  if (d.includes('element') || d.includes('t/c') || d.includes('thermocouple')) return 'Thermocouple / Temp Element';
+  if (d.includes('orifice'))               return 'Orifice Plate & Flange';
+  return 'Other / Uncategorised';
+}
+const CAL_TYPE_ORDER = ['Pressure Transmitter','Temperature Transmitter (incl. Temp)','DP / Flow Transmitter','DP / Level Transmitter','Flow Transmitter','Pressure Gauge (excl. diaphragm)','Pressure Gauge w/ Diaphragm Seal','Temperature Gauge','Temp Gauge','Thermowell','Thermocouple / Temp Element','Orifice Plate & Flange','Restriction Orifice','Other / Uncategorised'];
+
+function buildCalStats(data) {
+  const total=data.length, calibrated=data.filter(d=>d.cal).length, inspected=data.filter(d=>d.insp).length;
+  const typeMap={};
+  CAL_TYPE_ORDER.forEach(t=>{typeMap[t]={total:0,calibrated:0,inspected:0};});
+  data.forEach(d=>{const t=classifyCal(d.desc);if(!typeMap[t])typeMap[t]={total:0,calibrated:0,inspected:0};typeMap[t].total++;if(d.cal)typeMap[t].calibrated++;if(d.insp)typeMap[t].inspected++;});
+  const areaMap={};
+  data.forEach(d=>{const a=d.area||'Unknown';if(!areaMap[a])areaMap[a]={total:0,calibrated:0,inspected:0};areaMap[a].total++;if(d.cal)areaMap[a].calibrated++;if(d.insp)areaMap[a].inspected++;});
+  const areas=Object.keys(areaMap).sort();
+  const matrix={};
+  CAL_TYPE_ORDER.forEach(t=>{matrix[t]={};areas.forEach(a=>{matrix[t][a]={total:0,inspected:0};});});
+  data.forEach(d=>{const t=classifyCal(d.desc);const a=d.area||'Unknown';if(!matrix[t])matrix[t]={};if(!matrix[t][a])matrix[t][a]={total:0,inspected:0};matrix[t][a].total++;if(d.insp)matrix[t][a].inspected++;});
+  return{total,calibrated,inspected,pending:total-inspected,typeMap,areaMap,areas,matrix};
+}
+
+// ── INSTRUMENT EQUIPMENT CLASSIFICATION ──
+const INST_TYPES=[
+  {label:'Junction Box',                          fn:d=>d.includes('junction')},
+  {label:'Temperature Transmitter (incl. typos)', fn:d=>d.includes('temp')&&d.includes('trans')},
+  {label:'Pressure Transmitter',                  fn:d=>d.includes('pressure')&&d.includes('trans')},
+  {label:'DP / Flow Transmitter',                 fn:d=>d.includes('dp flow')},
+  {label:'Flow Transmitter',                      fn:d=>d.includes('flow transmitter')},
+  {label:'Level Transmitter',                     fn:d=>d.includes('level transmitter')},
+  {label:'Emergency Shutdown Switch',             fn:d=>d.includes('emergency')},
+  {label:'Temp Switch',                           fn:d=>d.includes('temp switch')},
+  {label:'Hand Switch',                           fn:d=>d.includes('hand switch')},
+  {label:'Switch (other)',                        fn:d=>d.includes('switch')&&!d.includes('emergency')&&!d.includes('temp switch')&&!d.includes('hand switch')},
+  {label:'Smoke Indicator',                       fn:d=>d.includes('smoke')},
+  {label:'Flow Indicator',                        fn:d=>d.includes('flow indicator')},
+  {label:'Analyzer / Analyser (all)',             fn:d=>d.includes('analy')},
+];
+const INST_TYPE_ORDER=['Junction Box','Temperature Transmitter (incl. typos)','Pressure Transmitter','DP / Flow Transmitter','Flow Transmitter','Level Transmitter','Emergency Shutdown Switch','Temp Switch','Hand Switch','Switch (other)','Smoke Indicator','Flow Indicator','Analyzer / Analyser (all)','Other / Uncategorised'];
+
+function classifyInstExcl(desc) {
+  const d=(desc||'').toLowerCase();
+  if(d.includes('junction'))                    return 'Junction Box';
+  if(d.includes('dp flow'))                     return 'DP / Flow Transmitter';
+  if(d.includes('temp')&&d.includes('trans'))   return 'Temperature Transmitter (incl. typos)';
+  if(d.includes('pressure')&&d.includes('trans')) return 'Pressure Transmitter';
+  if(d.includes('flow transmitter'))            return 'Flow Transmitter';
+  if(d.includes('level transmitter'))           return 'Level Transmitter';
+  if(d.includes('emergency'))                   return 'Emergency Shutdown Switch';
+  if(d.includes('temp switch'))                 return 'Temp Switch';
+  if(d.includes('hand switch'))                 return 'Hand Switch';
+  if(d.includes('switch'))                      return 'Switch (other)';
+  if(d.includes('smoke'))                       return 'Smoke Indicator';
+  if(d.includes('flow indicator'))              return 'Flow Indicator';
+  if(d.includes('analy'))                       return 'Analyzer / Analyser (all)';
+  return 'Other / Uncategorised';
+}
+
+function buildInstStats(data) {
+  const total=data.length,installed=data.filter(d=>d.install).length,inspected=data.filter(d=>d.insp).length;
+  const typeMap={};
+  INST_TYPE_ORDER.forEach(t=>{typeMap[t]={total:0,installed:0,inspected:0};});
+  data.forEach(d=>{
+    const dl=(d.desc||'').toLowerCase();let anyMatch=false;
+    INST_TYPES.forEach(type=>{if(type.fn(dl)){typeMap[type.label].total++;if(d.install)typeMap[type.label].installed++;if(d.insp)typeMap[type.label].inspected++;anyMatch=true;}});
+    if(!anyMatch){typeMap['Other / Uncategorised'].total++;if(d.install)typeMap['Other / Uncategorised'].installed++;if(d.insp)typeMap['Other / Uncategorised'].inspected++;}
+  });
+  const areaMap={};
+  data.forEach(d=>{const a=d.area||'Unknown';if(!areaMap[a])areaMap[a]={total:0,installed:0,inspected:0};areaMap[a].total++;if(d.install)areaMap[a].installed++;if(d.insp)areaMap[a].inspected++;});
+  const areas=Object.keys(areaMap).sort();
+  const matrix={};
+  INST_TYPE_ORDER.forEach(t=>{matrix[t]={};areas.forEach(a=>{matrix[t][a]={total:0,inspected:0};});});
+  data.forEach(d=>{const t=classifyInstExcl(d.desc);const a=d.area||'Unknown';if(!matrix[t][a])matrix[t][a]={total:0,inspected:0};matrix[t][a].total++;if(d.insp)matrix[t][a].inspected++;});
+  return{total,installed,inspected,pending:total-inspected,typeMap,areaMap,areas,matrix};
+}
+
+// ── RENDER ──
+function renderCalDashboard(d) {
+  document.getElementById('cal-kpi').innerHTML=
+    kpiCard('TOTAL INSTRUMENTS',d.total,null,'—','#00d4ff')+
+    kpiCard('CALIBRATED',d.calibrated,d.total,pctStr(d.calibrated,d.total),'#00d4ff')+
+    kpiCard('INSPECTED',d.inspected,d.total,pctStr(d.inspected,d.total),'#39ff14')+
+    kpiCard('PENDING INSPECTION',d.pending,d.total,pctStr(d.pending,d.total),'#ff4757');
+  renderTypeTable('cal-type-tbl',d,CAL_TYPE_ORDER,['Total','Calibrated','Inspected'],r=>[r.total,r.calibrated,r.inspected],d.total,d.calibrated,d.inspected);
+  renderAreaTable('cal-area-tbl',d,'badge-blue',['Total','Calibrated','Inspected'],r=>[r.total,r.calibrated,r.inspected],d.total,d.calibrated,d.inspected);
+  renderMatrix('cal-matrix-tbl',d,CAL_TYPE_ORDER,'#00d4ff');
+}
+function renderInstDashboard(d) {
+  document.getElementById('inst-kpi').innerHTML=
+    kpiCard('TOTAL INSTRUMENTS',d.total,null,'—','#ff6b35')+
+    kpiCard('INSTALLED',d.installed,d.total,pctStr(d.installed,d.total),'#ff6b35')+
+    kpiCard('INSPECTED',d.inspected,d.total,pctStr(d.inspected,d.total),'#39ff14')+
+    kpiCard('PENDING INSPECTION',d.pending,d.total,pctStr(d.pending,d.total),'#ff4757');
+  renderTypeTable('inst-type-tbl',d,INST_TYPE_ORDER,['Total','Installed','Inspected'],r=>[r.total,r.installed,r.inspected],d.total,d.installed,d.inspected);
+  renderAreaTable('inst-area-tbl',d,'badge-orange',['Total','Installed','Inspected'],r=>[r.total,r.installed,r.inspected],d.total,d.installed,d.inspected);
+  renderMatrix('inst-matrix-tbl',d,INST_TYPE_ORDER,'#ff6b35');
+}
+function renderTypeTable(id,d,order,colLabels,getter,totTotal,totA,totB) {
+  const active=order.filter(t=>d.typeMap[t]&&d.typeMap[t].total>0);
+  document.getElementById(id).innerHTML=
+    `<thead><tr><th>Instrument Type</th>${colLabels.map(l=>`<th style="text-align:right">${l}</th>`).join('')}<th style="text-align:right">% Inspected</th></tr></thead>
+    <tbody>${active.map(t=>{const[tot,a,b]=getter(d.typeMap[t]);return`<tr><td>${t}</td><td class="td-number">${fmt(tot)}</td><td class="td-number">${fmt(a)}</td><td class="td-number">${fmt(b)}</td><td>${pctBarCell(b,tot)}</td></tr>`;}).join('')}
+    <tr><td class="td-total">TOTAL</td><td class="td-total td-number">${fmt(totTotal)}</td><td class="td-total td-number">${fmt(totA)}</td><td class="td-total td-number">${fmt(totB)}</td><td class="td-total">${pctBarCell(totB,totTotal)}</td></tr></tbody>`;
+}
+function renderAreaTable(id,d,badgeClass,colLabels,getter,totTotal,totA,totB) {
+  const rows=Object.entries(d.areaMap).sort((a,b)=>b[1].total-a[1].total);
+  document.getElementById(id).innerHTML=
+    `<thead><tr><th>Area</th>${colLabels.map(l=>`<th style="text-align:right">${l}</th>`).join('')}<th style="text-align:right">% Inspected</th></tr></thead>
+    <tbody>${rows.map(([a,v])=>{const[tot,x,b]=getter(v);return`<tr><td><span class="badge ${badgeClass}">${a}</span></td><td class="td-number">${fmt(tot)}</td><td class="td-number">${fmt(x)}</td><td class="td-number">${fmt(b)}</td><td>${pctBarCell(b,tot)}</td></tr>`;}).join('')}
+    <tr><td class="td-total">TOTAL</td><td class="td-total td-number">${fmt(totTotal)}</td><td class="td-total td-number">${fmt(totA)}</td><td class="td-total td-number">${fmt(totB)}</td><td class="td-total">${pctBarCell(totB,totTotal)}</td></tr></tbody>`;
+}
+function renderMatrix(tableId,d,typeOrder,accentColor) {
+  const areas=d.areas;
+  const activeTypes=typeOrder.filter(t=>d.matrix[t]&&Object.values(d.matrix[t]).some(v=>v.total>0));
+  const colTotals={};areas.forEach(a=>{colTotals[a]={total:0,inspected:0};});
+  let gTotal=0,gInsp=0;
+  const bodyRows=activeTypes.map(t=>{
+    let rTotal=0,rInsp=0;
+    const cells=areas.map(a=>{const v=(d.matrix[t]&&d.matrix[t][a])?d.matrix[t][a]:{total:0,inspected:0};colTotals[a].total+=v.total;colTotals[a].inspected+=v.inspected;rTotal+=v.total;rInsp+=v.inspected;return`<td class="ctr">${v.total}</td><td class="ctr" style="color:#39ff14">${v.inspected}</td>`;}).join('');
+    gTotal+=rTotal;gInsp+=rInsp;
+    return`<tr><td style="white-space:nowrap;font-size:12px">${t}</td>${cells}<td class="ctr"><strong>${rTotal}</strong></td><td class="ctr" style="color:#39ff14">${rInsp}</td></tr>`;
+  }).join('');
+  const totCells=areas.map(a=>`<td class="ctr td-total"><strong>${colTotals[a].total}</strong></td><td class="ctr td-total" style="color:#39ff14">${colTotals[a].inspected}</td>`).join('');
+  document.getElementById(tableId).innerHTML=
+    `<thead><tr><th rowspan="2" style="min-width:180px">Instrument Type</th>${areas.map(a=>`<th class="area-h" colspan="2" style="color:${accentColor}">${a}</th>`).join('')}<th class="area-h" colspan="2" style="color:${accentColor}">All Areas</th></tr>
+    <tr>${areas.map(()=>'<th style="text-align:center;font-size:10px">Total</th><th style="text-align:center;font-size:10px;color:#39ff14">Insp.</th>').join('')}<th style="text-align:center;font-size:10px">Total</th><th style="text-align:center;font-size:10px;color:#39ff14">Insp.</th></tr></thead>
+    <tbody>${bodyRows}<tr><td class="td-total">TOTAL</td>${totCells}<td class="ctr td-total"><strong>${gTotal}</strong></td><td class="ctr td-total" style="color:#39ff14">${gInsp}</td></tr></tbody>`;
+}
+function kpiCard(label,value,total,pctDisplay,color) {
+  const p=total?pctNum(value,total):100;
+  return`<div class="kpi-card" style="--card-accent:${color}"><div class="kpi-label">${label}</div><div class="kpi-value">${fmt(value)}</div><div class="kpi-pct">${pctDisplay}</div><div class="progress-bar"><div class="progress-fill" style="width:${Math.min(p,100)}%"></div></div></div>`;
+}
+function pctBarCell(a,b) {
+  const p=b>0?(a/b)*100:0;const color=p>=75?'#39ff14':p>=40?'#ffd700':'#ff6b35';
+  return`<div class="pct-bar-wrap"><div class="mini-bar"><div class="mini-bar-fill" style="width:${p.toFixed(1)}%;background:${color}"></div></div><span style="font-family:'DM Mono',monospace;font-size:11px;color:${color};min-width:42px;text-align:right">${pctStr(a,b)}</span></div>`;
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
